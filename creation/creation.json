@@ -1,0 +1,9 @@
+{
+  "name": "Stock Checker",
+  "slug": "stock-checker",
+  "version": "1.0.0",
+  "description": "Quick glance prices for 20 popular tickers.",
+  "entry": "index.html",
+  "icon": "icon.png",
+  "permissions": ["network"]
+}
