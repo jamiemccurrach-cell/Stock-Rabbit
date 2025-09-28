@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Stock Checker</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 0; background:#0b0c10; color:#e9eef2; }
+    header { padding: 14px 16px; font-weight: 700; font-size: 18px; background:#111318; position: sticky; top:0 }
+    .wrap { padding: 12px; }
+    .controls { display:flex; gap:8px; margin-bottom:10px; }
+    button { padding:10px 12px; border:0; border-radius:10px; background:#1f6feb; color:white; font-weight:600; }
+    button:disabled{opacity:.6}
+    .grid { display:grid; grid-template-columns: 1fr 1fr; gap:8px; }
+    .card { background:#141821; border:1px solid #222836; border-radius:12px; padding:10px; }
+    .sym { font-weight:800; font-size:16px; letter-spacing:.3px }
+    .name { opacity:.8; font-size:12px; margin-top:2px }
+    .price { font-size:20px; font-weight:800; margin-top:6px }
+    .delta { font-size:12px; margin-top:2px }
+    .up { color:#2ecc71 } .down { color:#ff6b6b } .flat { color:#b0bac5 }
+    .ts { opacity:.7; font-size:11px; margin-top:8px }
+  </style>
+</head>
+<body>
+  <header>Stock Checker</header>
+  <div class="wrap">
+    <div class="controls">
+      <button id="refresh">Refresh</button>
+      <button id="usd">USD</button>
+    </div>
+    <div id="grid" class="grid"></div>
+    <div id="stamp" class="ts"></div>
+  </div>
+
+  <script type="module">
+    // --- Configure your 20 tickers here ---
+    const TICKERS = [
+      { s: "AAPL", n: "Apple" },
+      { s: "MSFT", n: "Microsoft" },
+      { s: "GOOGL", n: "Alphabet" },
+      { s: "AMZN", n: "Amazon" },
+      { s: "NVDA", n: "NVIDIA" },
+      { s: "META", n: "Meta" },
+      { s: "TSLA", n: "Tesla" },
+      { s: "ORCL", n: "Oracle" },
+      { s: "AVGO", n: "Broadcom" },
+      { s: "V",    n: "Visa" },
+      { s: "MA",   n: "Mastercard" },
+      { s: "JPM",  n: "JPMorgan" },
+      { s: "UNH",  n: "UnitedHealth" },
+      { s: "PG",   n: "Procter & Gamble" },
+      { s: "XOM",  n: "ExxonMobil" },
+      { s: "JNJ",  n: "Johnson & Johnson" },
+      { s: "PEP",  n: "PepsiCo" },
+      { s: "NFLX", n: "Netflix" },
+      { s: "AMD",  n: "AMD" },
+      { s: "COST", n: "Costco" }
+    ];
+
+    // By default we call a tiny proxy you host (recommended) to avoid CORS.
+    // Fallback (no proxy) tries Yahoo directly; may be blocked by CORS on some hosts.
+    const USE_PROXY = true;              // flip to false if you don't deploy the worker below
+    const PROXY_BASE = "/quote";         // path of your Cloudflare Worker route
+    const YF_BASE = "https://query1.finance.yahoo.com/v7/finance/quote?symbols=";
+
+    const grid = document.getElementById("grid");
+    const stamp = document.getElementById("stamp");
+    const btn = document.getElementById("refresh");
+
+    function rowTemplate({ s, n, p, d, dp }) {
+      const cls = d > 0 ? "up" : d < 0 ? "down" : "flat";
+      const sign = d > 0 ? "▲" : d < 0 ? "▼" : "•";
+      return `
+        <div class="card" id="card-${s}">
+          <div class="sym">${s}</div>
+          <div class="name">${n}</div>
+          <div class="price">${p ?? "—"}</div>
+          <div class="delta ${cls}">${sign} ${d ?? "—"} (${dp ?? "—"})</div>
+        </div>
+      `;
+    }
+
+    function renderSkeleton() {
+      grid.innerHTML = TICKERS.map(t => rowTemplate({ s: t.s, n: t.n })).join("");
+    }
+
+    function fmt(n, dp=2) { return Number(n).toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp }); }
+
+    async function fetchQuotes(symbols) {
+      const url = (USE_PROXY ? `${PROXY_BASE}?symbols=` : YF_BASE) + symbols.join(",");
+      const r = await fetch(url);
+      if (!r.ok) throw new Error("Network error " + r.status);
+      const j = await r.json();
+      // Expect the Yahoo Finance quote schema
+      const items = j.quoteResponse?.result || j.results || [];
+      const map = {};
+      for (const it of items) {
+        const s = it.symbol;
+        const price = it.regularMarketPrice ?? it.ask ?? it.bid ?? null;
+        const change = it.regularMarketChange ?? null;
+        const changePct = it.regularMarketChangePercent ?? null;
+        map[s] = {
+          p: price != null ? "$" + fmt(price) : "—",
+          d: change != null ? fmt(change) : "—",
+          dp: changePct != null ? fmt(changePct) + "%" : "—"
+        };
+      }
+      return map;
+    }
+
+    async function refresh() {
+      btn.disabled = true;
+      try {
+        const map = await fetchQuotes(TICKERS.map(t => t.s));
+        for (const { s, n } of TICKERS) {
+          const el = document.getElementById(`card-${s}`);
+          const { p, d, dp } = map[s] || {};
+          el.outerHTML = rowTemplate({ s, n, p, d, dp });
+        }
+        stamp.textContent = "Updated: " + new Date().toLocaleString();
+      } catch (e) {
+        stamp.textContent = "Error: " + e.message;
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    renderSkeleton();
+    refresh();
+    btn.addEventListener("click", refresh);
+  </script>
+</body>
+</html>
